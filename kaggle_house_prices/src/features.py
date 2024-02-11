@@ -1,7 +1,7 @@
 """
 Feature engineering on the House price Kaggle competition.
 
-Source: https://www.kaggle.com/code/ryanholbrook/feature-engineering-for-house-prices 
+Source: https://www.kaggle.com/code/ryanholbrook/feature-engineering-for-house-prices
 """
 
 from typing import Tuple
@@ -125,15 +125,6 @@ def make_mi_scores(X, y):
     return mi_scores
 
 
-def plot_mi_scores(scores):
-    scores = scores.sort_values(ascending=True)
-    width = np.arange(len(scores))
-    ticks = list(scores.index)
-    plt.barh(width, scores)
-    plt.yticks(width, ticks)
-    plt.title("Mutual Information Scores")
-
-
 def load_data():
     # Read data
     data_dir = PATH_DATA
@@ -179,7 +170,6 @@ def main():
     print(f"Baseline score: {baseline_score:.5f} RMSLE")
     X, y = get_x_y(data=df_train)
     mi_scores = make_mi_scores(X, y)
-    plot_mi_scores(scores=mi_scores)
     plt.show()
     print(mi_scores.head(10))
 
