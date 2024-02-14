@@ -5,22 +5,17 @@ Source:
 https://www.kaggle.com/code/ryanholbrook/feature-engineering-for-house-prices
 """
 
+from pathlib import Path
 from typing import Tuple
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from pandas.api.types import CategoricalDtype
-from sklearn.compose import ColumnTransformer
 from sklearn.feature_selection import mutual_info_regression
-from sklearn.impute import SimpleImputer
-from sklearn.model_selection import cross_val_score, train_test_split
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
-from xgboost import XGBRegressor
-from kaggle_house_prices.out.path_out import OUT_DIR
 
-from kaggle_house_prices.src.read_data import PATH_DATA
+# Get the current file's directory as a Path object
+PATH_DATA = Path(__file__).resolve().parent.parent / "data"
+
 
 Y_COL = "SalePrice"
 
@@ -127,64 +122,19 @@ ORDERED_LEVELS = {
 ORDERED_LEVELS = {key: ["None"] + value for key, value in ORDERED_LEVELS.items()}
 
 
-def get_preprocessor() -> ColumnTransformer:
-    # decide what treatment to apply for what column
-    nominal_transformer = Pipeline(
-        steps=[
-            ("imputer", SimpleImputer(strategy="most_frequent")),
-            ("onehot", OneHotEncoder(handle_unknown="ignore")),
-        ]
-    )
-    ordinal_transformer = Pipeline(
-        steps=[
-            ("imputer", SimpleImputer(strategy="constant", fill_value="None")),
-            (
-                "encoder",
-                OrdinalEncoder(
-                    categories=[ORDERED_LEVELS[col] for col in ORDERED_LEVELS.keys()]
-                ),
-            ),
-        ]
-    )
-    numeric_transformer = Pipeline(
-        steps=[
-            ("imputer", SimpleImputer(strategy="mean")),
-        ]
-    )
-    processor = ColumnTransformer(
-        transformers=[
-            ("num", numeric_transformer, QUANT_FEATURES),
-            ("nom", nominal_transformer, NOMINAL_FEATURES),
-            ("ord", ordinal_transformer, list(ORDERED_LEVELS.keys())),
-        ]
-    )
-    return processor
-
-
-def get_encode_pipeline() -> ColumnTransformer:
-    """Get the pipeline to encode the features."""
-    # apply one-hot encoding to nominal features
-    one_hot_transformer = Pipeline(
-        steps=[("onehot", OneHotEncoder(handle_unknown="ignore"))]
-    )
-    # encode ordinal features (appropriate for tree-based model)
-    ordinal_transformer = Pipeline(
-        steps=[
-            (
-                "ordinal",
-                OrdinalEncoder(
-                    categories=[ORDERED_LEVELS[col] for col in ORDERED_LEVELS.keys()]
-                ),
-            )
-        ]
-    )
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ("num", one_hot_transformer, NOMINAL_FEATURES),
-            ("ord", ordinal_transformer, list(ORDERED_LEVELS.keys())),
-        ]
-    )
-    return preprocessor
+def load_data():
+    # Read data
+    data_dir = PATH_DATA
+    df_train = pd.read_csv(data_dir / "train.csv", index_col="Id")
+    df_test = pd.read_csv(data_dir / "test.csv", index_col="Id")
+    # Merge the splits so we can process them together
+    df = pd.concat([df_train, df_test])
+    # Preprocessing
+    df = encode(df)
+    # Reform splits
+    df_train = df.loc[df_train.index, :]
+    df_test = df.loc[df_test.index, :]
+    return df_train, df_test
 
 
 def encode(df):
@@ -220,74 +170,10 @@ def make_mi_scores(X, y):
     return mi_scores
 
 
-def load_data():
-    # Read data
-    data_dir = PATH_DATA
-    df_train = pd.read_csv(data_dir / "train.csv", index_col="Id")
-    df_test = pd.read_csv(data_dir / "test.csv", index_col="Id")
-    # Merge the splits so we can process them together
-    df = pd.concat([df_train, df_test])
-    # Preprocessing
-    df = encode(df)
-    # Reform splits
-    df_train = df.loc[df_train.index, :]
-    df_test = df.loc[df_test.index, :]
-    return df_train, df_test
-
-
-def score_dataset(X, y, model):
-    score = cross_val_score(
-        model,
-        X,
-        y,
-        cv=5,
-        scoring="neg_mean_squared_error",
-    )
-    score = -1 * score.mean()
-    score = np.sqrt(score)
-    return score
-
-
 def main():
-    model = XGBRegressor()
-    df_train, df_test = load_data()
-    X, y = get_x_y(data=df_train)
-    preprocessor = get_preprocessor()
-    my_pipeline = Pipeline(
-        steps=[
-            ("preprocess", preprocessor),
-            ("model", model),
-        ]
-    )
-
-    # look into one example of splitting the data
-    df_train_train, df_train_valid = train_test_split(
-        df_train, test_size=0.2, random_state=42
-    )
-    X_train_train, y_train_train = get_x_y(data=df_train_train)
-    X_train_valid, y_train_valid = get_x_y(data=df_train_valid)
-
-    my_pipeline.fit(X_train_train, y_train_train)
-    y_pred_valid = my_pipeline.predict(X_train_valid)
-    plt.scatter(y_train_valid, y_pred_valid, alpha=0.2)
-    plt.show()
-
-    # cross-validation score
-    baseline_score = score_dataset(X, y, model=my_pipeline)
-    print(f"Baseline score: {baseline_score:.5f} RMSLE")
-
-    # export baseline submission
-    export_kaggle_submission(df_test, X, y, my_pipeline)
-
-
-def export_kaggle_submission(df_test, X, y, my_pipeline):
-    my_pipeline.fit(X, y)
-    # and make predictions on the test set
-    X_test = df_test.drop(columns=[Y_COL])
-    y_pred = np.exp(my_pipeline.predict(X_test))
-    # save the predictions for submission
-    output = pd.DataFrame({"Id": X_test.index, "SalePrice": y_pred}).set_index("Id")
-    output.to_csv(OUT_DIR / "submission.csv", index=True)
+    df_train, _ = load_data()
+    X, y = get_x_y(df_train)
+    print(f"Most important feature:\n{make_mi_scores(X, y).to_frame().head(10)}")
 
 
 if __name__ == "__main__":

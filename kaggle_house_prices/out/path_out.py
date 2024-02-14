@@ -1,4 +1,4 @@
-# get the path to the directory out
+""" Get the path to the directory out """
 
 from pathlib import Path
 
