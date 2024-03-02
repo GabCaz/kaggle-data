@@ -94,18 +94,24 @@ def score_dataset(X, y, model):
     return score
 
 
-def export_kaggle_submission(df_test, X, y, my_pipeline):
+def score_result(y_true, y_pred):
+    """Mean squared error"""
+    return np.mean((y_true - y_pred) ** 2)
+
+
+def export_kaggle_submission(df_test, X, y, my_pipeline, fname="submission.csv"):
+    # fit the model on ALL the data for the final submission
     my_pipeline.fit(X, y)
     # and make predictions on the test set
     X_test = df_test.drop(columns=[Y_COL])
     y_pred = np.exp(my_pipeline.predict(X_test))
     # save the predictions for submission
     output = pd.DataFrame({"Id": X_test.index, "SalePrice": y_pred}).set_index("Id")
-    output.to_csv(OUT_DIR / "submission.csv", index=True)
+    output.to_csv(OUT_DIR / fname, index=True)
 
 
-def get_model_pipeline():
-    model = XGBRegressor()
+def get_model_pipeline(*args, **kwargs):
+    model = XGBRegressor(**kwargs)
     preprocessor = get_preprocessor()
     my_pipeline = Pipeline(
         steps=[
