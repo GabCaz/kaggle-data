@@ -8,19 +8,67 @@ from xgboost import XGBRegressor
 
 from kaggle_house_prices.src.features import get_x_y, load_data
 from kaggle_house_prices.src.model_pipeline import (
-    get_model_pipeline,
+    get_model_pipeline_xgb,
     get_preprocessor,
     score_result,
     export_kaggle_submission,
+    get_model_pipeline_rf,
 )
 from sklearn.model_selection import train_test_split, GridSearchCV, KFold
+from kaggle_house_prices.src.config import in_out
+
+
+def hyperparameter_tuning_rf():
+    df_train, df_test = load_data()
+    X, y = get_x_y(data=df_train)
+    model_pipeline = get_model_pipeline_rf()
+
+    # parameters to search
+    param_grid = {
+        "n_estimators": list(range(100, 500, 100)),
+        "max_depth": [3, 6, 10],
+        "max_features": ["sqrt", "log2"],
+        "min_samples_leaf": [1, 4, 8],
+    }
+    grid_renamed_for_model = {
+        f"model__{key}": value for key, value in param_grid.items()
+    }
+
+    # grid search
+    GS = GridSearchCV(
+        model_pipeline,
+        grid_renamed_for_model,
+        scoring="neg_mean_squared_error",
+        cv=5,
+        verbose=1,
+    )
+    GS.fit(X, y)
+    print(f"Best parameters: {GS.best_params_}")
+
+    # drop the best parameters to a YAML file
+    best_params = GS.best_params_
+    in_out.write_yaml(best_params, "best_params_rf.yaml")
+
+    print(f"Best score: {GS.best_score_:.5f}")
+    df_all_models = pd.DataFrame(GS.cv_results_).sort_values("rank_test_score")
+    print(df_all_models[["params", "mean_test_score", "rank_test_score"]].head(10))
+
+    # get the best performing model
+    best_model = GS.best_estimator_
+    export_kaggle_submission(
+        df_test, X, y, best_model, fname="random_forest_grid_search_cv.csv"
+    )
 
 
 def main():
+    hyperparameter_tuning_rf()
+    hyperparameter_tuning_xgboost()
+
+
+def hyperparameter_tuning_xgboost():
     df_train, df_test = load_data()
     X, y = get_x_y(data=df_train)
-    model_pipeline = get_model_pipeline()
-
+    model_pipeline = get_model_pipeline_xgb()
     # parameters to search
     param_grid = {
         "n_estimators": list(range(100, 500, 100)),
@@ -31,7 +79,6 @@ def main():
     grid_renamed_for_model = {
         f"model__{key}": value for key, value in param_grid.items()
     }
-
     # try using early stopping
     preprocessor = get_preprocessor()
     params_grid_early_stopping = deepcopy(param_grid)
@@ -46,11 +93,10 @@ def main():
     best_res_early_stopping = res_grid_search.sort_values("score")
     print(best_res_early_stopping.head(10))
     best_params_early_stopping = best_res_early_stopping.iloc[0, :]["parameters"]
-    best_model_early_stopping = get_model_pipeline(**best_params_early_stopping)
+    best_model_early_stopping = get_model_pipeline_xgb(**best_params_early_stopping)
     export_kaggle_submission(
         df_test, X, y, best_model_early_stopping, fname="xgboost_early_stopping.csv"
     )
-
     # grid search
     GS = GridSearchCV(
         model_pipeline,
@@ -60,16 +106,36 @@ def main():
         verbose=1,
     )
     GS.fit(X, y)
+
+    # drop the best parameters to a YAML file
+    best_params = GS.best_params_
+    in_out.write_yaml(best_params, "best_params_xgboost.yaml")
+
     print(f"Best parameters: {GS.best_params_}")
     print(f"Best score: {GS.best_score_:.5f}")
     df_all_models = pd.DataFrame(GS.cv_results_).sort_values("rank_test_score")
     print(df_all_models[["params", "mean_test_score", "rank_test_score"]].head(10))
-
     # get the best performing model
     best_model = GS.best_estimator_
     export_kaggle_submission(
         df_test, X, y, best_model, fname="xgboost_grid_search_cv.csv"
     )
+
+
+def get_best_pipeline_xgboost():
+    best_params = in_out.read_yaml("best_params_xgboost.yaml")
+    # left strip the model__ prefix
+    best_params = {key.split("__")[1]: value for key, value in best_params.items()}
+    best_model = get_model_pipeline_xgb(**best_params)
+    return best_model
+
+
+def get_best_pipeline_rf():
+    best_params = in_out.read_yaml("best_params_rf.yaml")
+    # left strip the model__ prefix
+    best_params = {key.split("__")[1]: value for key, value in best_params.items()}
+    best_model = get_model_pipeline_rf(**best_params)
+    return best_model
 
 
 def grid_search_with_early_stopping(

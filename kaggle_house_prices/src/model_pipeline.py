@@ -4,6 +4,7 @@ Model
 
 import numpy as np
 import pandas as pd
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import cross_val_score
@@ -110,7 +111,7 @@ def export_kaggle_submission(df_test, X, y, my_pipeline, fname="submission.csv")
     output.to_csv(OUT_DIR / fname, index=True)
 
 
-def get_model_pipeline(*args, **kwargs):
+def get_model_pipeline_xgb(*args, **kwargs):
     model = XGBRegressor(**kwargs)
     preprocessor = get_preprocessor()
     my_pipeline = Pipeline(
@@ -122,8 +123,20 @@ def get_model_pipeline(*args, **kwargs):
     return my_pipeline
 
 
+def get_model_pipeline_rf(*args, **kwargs):
+    model = RandomForestRegressor(**kwargs)
+    preprocessor = get_preprocessor()
+    my_pipeline = Pipeline(
+        steps=[
+            ("preprocess", preprocessor),
+            ("model", model),
+        ]
+    )
+    return my_pipeline
+
+
 def main():
-    full_model = get_model_pipeline()
+    full_model = get_model_pipeline_xgb()
     df_train, df_test = load_data()
     X, y = get_x_y(data=df_train)
 
